@@ -74,6 +74,8 @@ struct Ray
 	float3 color;
 	float3 incomingLight;
 };
+
+// triangle struct and intersection algo
 struct Triangle
 {
 	float3 v0;
@@ -159,11 +161,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 		
         if (hit.distance < closestHit.distance && hit.didhit)
         {
-            closestHit.didhit = true;
-			closestHit.distance = hit.distance;
-            closestHit.hitPoint = hit.hitPoint;
-            closestHit.color = hit.color;
-            closestHit.normal = hit.normal;
+            closestHit = hit;
         }
     }
 	

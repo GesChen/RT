@@ -1,7 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 
 public struct Triangle
 {
@@ -20,8 +23,10 @@ public class RTMain : MonoBehaviour
 	public RenderTexture texture;
     ComputeBuffer worldBuffer;
     Camera camera;
+
+	public static UnityEvent worldChanged;
 	
-	readonly List<Triangle> tris = new();
+	private List<Triangle> tris = new();
 	Vector3 ColorToVec3(Color col)
 	{
 		return new Vector3(col.r, col.g, col.b);
@@ -30,27 +35,32 @@ public class RTMain : MonoBehaviour
 	{
 		Application.targetFrameRate = 60; //no unnecessary processing
 
-		// populate tris with all tris from meshes of rtobjects
-		foreach(RTObject obj in FindObjectsOfType<RTObject>())
-		{
-			Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
-
-			Debug.Log("Adding " + obj.name);
-			for (int t = 0; t < mesh.triangles.Length / 3; t++) //iterate through tris
-			{
-				Debug.Log("Tri " + t);
-				tris.Add(new Triangle
-				{
-					v0 = mesh.vertices[mesh.triangles[t * 3 + 0]] + obj.transform.position,
-					v1 = mesh.vertices[mesh.triangles[t * 3 + 1]] + obj.transform.position,
-					v2 = mesh.vertices[mesh.triangles[t * 3 + 2]] + obj.transform.position,
-					color = ColorToVec3(obj.color)//,
-					//eColor = col2vec3(obj.eColor),
-					//eIntensity = obj.eIntensity,
-				});
-			}
-		}
+		worldChanged = new UnityEvent();
+		worldChanged.AddListener(UpdateWorld);
 	}
+	void UpdateWorld()
+	{
+        // populate tris with all tris from meshes of rtobjects
+
+        tris = new();
+        foreach (RTObject obj in FindObjectsOfType<RTObject>())
+        {
+            Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
+
+            for (int t = 0; t < mesh.triangles.Length / 3; t++) //iterate through tris
+            {
+                tris.Add(new Triangle
+                {
+                    v0 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 0]]),
+                    v1 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 1]]),
+                    v2 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 2]]),
+                    color = ColorToVec3(obj.color)//,
+                                                  //eColor = col2vec3(obj.eColor),
+                                                  //eIntensity = obj.eIntensity,
+                });
+            }
+        }
+    }
 	private void OnRenderImage(RenderTexture src, RenderTexture dest)
 	{
 		//initialize
