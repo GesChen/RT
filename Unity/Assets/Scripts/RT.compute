@@ -1,0 +1,179 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Output;
+float2 res; //resolution
+
+float Time;
+uint seed = 1;
+
+float rand()
+{
+	seed = seed * 747796405 + 2891336453;
+	uint result = ((seed >> ((seed >> 28) + 4)) ^ seed) * 27780737;
+	result = (result >> 22) ^ result;
+	return result / 4294967295.;
+};
+float3 normalize(float3 v)
+{
+	return v / length(v);
+};
+float3 rotateX(float3 v, float t)
+{
+	float3x3 mat = float3x3(
+	1, 0, 0,
+	0, cos(t), -sin(t),
+	0, sin(t), cos(t));
+	
+	return mul(v, mat);
+}
+float3 rotateY(float3 v, float t)
+{
+	float3x3 mat = float3x3(
+	cos(t),  0, sin(t),
+		 0,  1,      0,
+	-sin(t), 0, cos(t));
+	
+	return mul(v, mat);
+}
+float3 rotateZ(float3 v, float t)
+{
+	float3x3 mat = float3x3(
+	cos(t), -sin(t), 0,
+	sin(t), cos(t), 0,
+	0, 0, 1);
+	
+	return mul(v, mat);
+}
+float3 rotateVector(float3 vec, float3 eulerAngles)
+{
+	float3 rad = radians(eulerAngles);
+	return rotateZ(rotateY(rotateX(vec, rad.x), rad.y), rad.z);
+}
+
+struct Material
+{
+	float3 color;
+	float3 emissionColor;
+	float emissionIntensity;
+};
+struct Hit
+{
+	bool didhit;
+	float distance;
+	float3 hitPoint;
+	float3 normal;
+    float3 color;
+};
+struct Ray
+{
+	float3 origin;
+	float3 direction;
+	float3 color;
+	float3 incomingLight;
+};
+struct Triangle
+{
+	float3 v0;
+	float3 v1;
+	float3 v2;
+	
+	float3 color;
+};
+Hit iTriangle(Ray ray, Triangle tri)
+{
+	
+	float3 v1v0 = tri.v1 - tri.v0;
+	float3 v2v0 = tri.v2 - tri.v0;
+	float3 rov0 = ray.origin - tri.v0;
+
+	float3 n = cross( v1v0, v2v0 );
+	float3 q = cross( rov0, ray.direction );
+	float  d = 1.0 / dot( ray.direction, n );
+	float  u = d * dot( -q, v2v0 );
+	float  v = d * dot( q,  v1v0 );
+	float  t = d * dot( -n, rov0 );
+
+	if (u < 0. || v < 0. || (u + v) > 1. || t < .01 || t > 1000) // .01 and 1000 used as near and far temporarily, fixes the rendering behind camera bug
+	{
+		Hit hit;
+		hit.didhit = false;
+		hit.distance = -1;
+		return hit; // no intersection
+	}
+	
+	Hit hit;
+	hit.didhit = true;
+	hit.distance = t;
+	hit.hitPoint = ray.origin + ray.direction * t;
+    hit.color = tri.color;
+	hit.normal = normalize(n);
+	return hit;
+}
+
+
+//create a ray given uv and camera parameters
+float3 viewParams;
+float3 camPos;
+float3 camRot;
+Ray CameraRay(float2 uv)
+{
+	float3 pointLocal = float3(uv - .5, 1) * viewParams;
+	float3 direction = rotateVector(pointLocal, -camRot);
+	
+	Ray ray;
+	ray.origin = camPos;
+	ray.direction = normalize(direction);
+	ray.color = 1;
+	ray.incomingLight = 0;
+	
+	return ray;
+}
+
+//RWStructuredBuffer<int> debug;
+
+RWStructuredBuffer<Triangle> World;
+int worldSize;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	seed = id.x + id.y * res.x;
+	seed ^= (int) Time * 10000;
+	float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
+	
+	Ray ray = CameraRay(uv);
+	
+    float test = 0;
+	// iterate through world and find closest hit
+	Hit closestHit;
+	closestHit.didhit = false;
+	closestHit.distance = 10000000;
+    for (int i = 0; i < worldSize; i++)
+	{
+		Triangle tri = World[i];
+	
+		Hit hit = iTriangle(ray, tri);
+		
+        if (hit.distance < closestHit.distance && hit.didhit)
+        {
+            closestHit.didhit = true;
+			closestHit.distance = hit.distance;
+            closestHit.hitPoint = hit.hitPoint;
+            closestHit.color = hit.color;
+            closestHit.normal = hit.normal;
+        }
+    }
+	
+	float3 col = lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
+	
+	if (closestHit.didhit)
+	{
+        col = float3(closestHit.color.xyz);
+        //debug[0] = closestHit.distance;
+	}
+	
+	Output[id.xy] = float4(col, 1); 
+}
