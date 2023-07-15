@@ -35,36 +35,42 @@ public class RTMain : MonoBehaviour
 	{
 		Application.targetFrameRate = 60; //no unnecessary processing
 
+		camera = Camera.main;
+
 		worldChanged = new UnityEvent();
 		worldChanged.AddListener(UpdateWorld);
 	}
 	void UpdateWorld()
 	{
-        // populate tris with all tris from meshes of rtobjects
+		// populate tris with all tris from meshes of rtobjects
 
         tris = new();
         foreach (RTObject obj in FindObjectsOfType<RTObject>())
         {
-            Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
+			// dont render if object isn't in frustum
+			if (obj.visibleToCamera)
+			{
 
-            for (int t = 0; t < mesh.triangles.Length / 3; t++) //iterate through tris
-            {
-                tris.Add(new Triangle
-                {
-                    v0 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 0]]),
-                    v1 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 1]]),
-                    v2 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 2]]),
-                    color = ColorToVec3(obj.color)//,
-                                                  //eColor = col2vec3(obj.eColor),
-                                                  //eIntensity = obj.eIntensity,
-                });
-            }
+				Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
+
+				for (int t = 0; t < mesh.triangles.Length / 3; t++) //iterate through tris
+				{
+					tris.Add(new Triangle
+					{
+						v0 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 0]]),
+						v1 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 1]]),
+						v2 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 2]]),
+						color = ColorToVec3(obj.color)//,
+													  //eColor = col2vec3(obj.eColor),
+													  //eIntensity = obj.eIntensity,
+					});
+				}
+			}
         }
     }
 	private void OnRenderImage(RenderTexture src, RenderTexture dest)
 	{
 		//initialize
-		camera = GetComponent<Camera>();
 		if (texture == null)
 		{
 			texture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24){
@@ -87,20 +93,26 @@ public class RTMain : MonoBehaviour
 
     void BeforeDispatch()
 	{
-        /*
+		/*
 		// debug
 		ComputeBuffer debugBuffer = new(1, sizeof(int));
 		debugBuffer.SetData(new int[] { 0 });
 		shader.SetBuffer(0, "debug", debugBuffer);
 		*/
 
-        // world buffer
-        int size = sizeof(float) * 3 * 4; // 3 for vec3, 4 for 4 vec3s 
-		worldBuffer = new(tris.Count, size);
-        worldBuffer.SetData(tris.ToArray());
-        Debug.Log(worldBuffer.count);
-        shader.SetBuffer(0, "World", worldBuffer);
-        shader.SetInt("worldSize", tris.Count);
+		// world buffer
+		if (tris.Count > 0)
+		{
+			int size = sizeof(float) * 3 * 4; // 3 for vec3, 4 for 4 vec3s 
+			worldBuffer = new(tris.Count, size);
+			worldBuffer.SetData(tris.ToArray());
+			shader.SetBuffer(0, "World", worldBuffer);
+			shader.SetInt("worldSize", tris.Count);
+		}
+		else
+		{
+            shader.SetInt("worldSize", 0);
+        }
 
         // general
         shader.SetTexture(0, "Output", texture);
@@ -129,6 +141,7 @@ public class RTMain : MonoBehaviour
 		debugBuffer.GetData(debugout);
 		Debug.Log("buffer " + debugout[0]);
 		*/
+		
         worldBuffer.Dispose(); // release memory
     }
 }

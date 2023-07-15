@@ -169,7 +169,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	
 	if (closestHit.didhit)
 	{
-        col = float3(closestHit.color.xyz);
+        col = float3(closestHit.normal.xyz);
         //debug[0] = closestHit.distance;
 	}
 	
