@@ -10,6 +10,7 @@ public class CameraMovement : MonoBehaviour
     public float speed;
     public float drift = .2f;
 	public float scrollSensitivity = 5f;
+	public float angleLimit = 85f;
 
 	Vector3 velocity;
 	float pitch;
@@ -25,6 +26,7 @@ public class CameraMovement : MonoBehaviour
 	void Update()
 	{
 		pitch -= Input.GetAxis("Mouse Y") * sensitivity * Time.deltaTime;
+		pitch = Mathf.Clamp(pitch, -angleLimit, angleLimit);
 		yaw   += Input.GetAxis("Mouse X") * sensitivity * Time.deltaTime;
 
 		transform.rotation = Quaternion.Euler(pitch, yaw, 0);

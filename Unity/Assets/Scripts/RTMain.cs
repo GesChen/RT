@@ -1,10 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.SceneManagement;
 
 public struct Triangle
 {
@@ -16,17 +15,27 @@ public struct Triangle
 	//public Vector3 eColor;
 	//public float eIntensity;
 }
+public struct ObjectBounds
+{
+	public Vector3 boundsStart;
+	public Vector3 boundsEnd;
+
+	public int indexStart;
+	public int indexEnd;
+}
 
 public class RTMain : MonoBehaviour
 {
 	public ComputeShader shader;
 	public RenderTexture texture;
-    ComputeBuffer worldBuffer;
-    Camera camera;
+	ComputeBuffer worldBuffer;
+	ComputeBuffer boundsBuffer;
+	Camera camera;
 
 	public static UnityEvent worldChanged;
 	
-	private List<Triangle> tris = new();
+	List<Triangle> tris;
+	List<ObjectBounds> bounds;
 	Vector3 ColorToVec3(Color col)
 	{
 		return new Vector3(col.r, col.g, col.b);
@@ -43,18 +52,29 @@ public class RTMain : MonoBehaviour
 	void UpdateWorld()
 	{
 		// populate tris with all tris from meshes of rtobjects
-
-        tris = new();
-        foreach (RTObject obj in FindObjectsOfType<RTObject>())
-        {
+		int i = 0;
+		tris = new();
+		bounds = new();
+		foreach (RTObject obj in FindObjectsOfType<RTObject>())
+		{
 			// dont render if object isn't in frustum
 			if (obj.visibleToCamera)
 			{
-
 				Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
+
+				Bounds rendererBounds = obj.GetComponent<Renderer>().bounds;
+
+				bounds.Add(new ObjectBounds
+				{
+					boundsStart = rendererBounds.min,
+					boundsEnd = rendererBounds.max,
+					indexStart = i,
+					indexEnd = i + mesh.triangles.Length / 3
+				});
 
 				for (int t = 0; t < mesh.triangles.Length / 3; t++) //iterate through tris
 				{
+					i++;
 					tris.Add(new Triangle
 					{
 						v0 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 0]]),
@@ -66,8 +86,8 @@ public class RTMain : MonoBehaviour
 					});
 				}
 			}
-        }
-    }
+		}
+	}
 	private void OnRenderImage(RenderTexture src, RenderTexture dest)
 	{
 		//initialize
@@ -82,16 +102,16 @@ public class RTMain : MonoBehaviour
 		BeforeDispatch();
 
 		// run shader
-        shader.Dispatch(0, texture.width / 8, texture.height / 8, 1);
+		shader.Dispatch(0, texture.width / 8, texture.height / 8, 1);
 
 		// clean up 
 		AfterDispatch();
 
-        // show texture to screen
-        Graphics.Blit(texture, dest); 
+		// show texture to screen
+		Graphics.Blit(texture, dest); 
 	}
 
-    void BeforeDispatch()
+	void BeforeDispatch()
 	{
 		/*
 		// debug
@@ -100,40 +120,47 @@ public class RTMain : MonoBehaviour
 		shader.SetBuffer(0, "debug", debugBuffer);
 		*/
 
-		// world buffer
+		// world and bounds buffer
 		if (tris.Count > 0)
 		{
-			int size = sizeof(float) * 3 * 4; // 3 for vec3, 4 for 4 vec3s 
-			worldBuffer = new(tris.Count, size);
+			int worldSize = sizeof(float) * 3 * 4; // 3 for vec3, 4 for 4 vec3s 
+			worldBuffer = new(tris.Count, worldSize);
 			worldBuffer.SetData(tris.ToArray());
 			shader.SetBuffer(0, "World", worldBuffer);
 			shader.SetInt("worldSize", tris.Count);
+
+			int boundsSize = sizeof(float) * 3 * 2 + sizeof(int) * 2;
+			boundsBuffer = new(bounds.Count, boundsSize);
+			boundsBuffer.SetData(bounds.ToArray());
+			shader.SetBuffer(0, "WorldObjectBounds", boundsBuffer);
+			shader.SetInt("numObjects", bounds.Count);
 		}
 		else
 		{
-            shader.SetInt("worldSize", 0);
-        }
-
-        // general
-        shader.SetTexture(0, "Output", texture);
-        shader.SetFloat("Time", Time.time);
-
-        // set camera values
-        float planeHeight = camera.nearClipPlane * Mathf.Tan(Mathf.Deg2Rad * camera.fieldOfView * .5f) * 2f;
-        float planeWidth = planeHeight * camera.aspect;
-        float[] viewParams = new float[3] { planeWidth, planeHeight, camera.nearClipPlane };
-        shader.SetFloats("viewParams", viewParams); // view parameters 
-
-        Vector3 ctp = camera.transform.position;
-        shader.SetFloats("camPos", new float[3] { ctp.x, ctp.y, ctp.z }); // set position
-
-        Vector3 ctre = camera.transform.rotation.eulerAngles;
-        shader.SetFloats("camRot", new float[3] { ctre.x, ctre.y, ctre.z }); // set rotation
-
-        shader.SetFloats("res", new float[2] { texture.width, texture.height });
+			shader.SetInt("worldSize", 0);
+			shader.SetInt("numObjects", 0);
+		}
 
 
-    }
+
+		// general
+		shader.SetTexture(0, "Output", texture);
+		shader.SetFloat("Time", Time.time);
+
+		// set camera values
+		float planeHeight = camera.nearClipPlane * Mathf.Tan(Mathf.Deg2Rad * camera.fieldOfView * .5f) * 2f;
+		float planeWidth = planeHeight * camera.aspect;
+		float[] viewParams = new float[3] { planeWidth, planeHeight, camera.nearClipPlane };
+		shader.SetFloats("viewParams", viewParams); // view parameters 
+
+		Vector3 ctp = camera.transform.position;
+		shader.SetFloats("camPos", new float[3] { ctp.x, ctp.y, ctp.z }); // set position
+
+		Vector3 ctre = camera.transform.rotation.eulerAngles;
+		shader.SetFloats("camRot", new float[3] { ctre.x, ctre.y, ctre.z }); // set rotation
+
+		shader.SetFloats("res", new float[2] { texture.width, texture.height });
+	}
 	void AfterDispatch()
 	{
 		/* debug pt2
@@ -142,6 +169,7 @@ public class RTMain : MonoBehaviour
 		Debug.Log("buffer " + debugout[0]);
 		*/
 		
-        worldBuffer.Dispose(); // release memory
-    }
+		worldBuffer.Dispose(); // release memory
+		boundsBuffer.Dispose();
+	}
 }

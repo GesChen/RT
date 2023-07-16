@@ -52,6 +52,10 @@ float3 rotateVector(float3 vec, float3 eulerAngles)
 	float3 rad = radians(eulerAngles);
 	return rotateZ(rotateY(rotateX(vec, rad.x), rad.y), rad.z);
 }
+float squaredDist(float3 a, float3 b)
+{
+	return dot(a - b, a - b);
+}
 
 struct Material
 {
@@ -65,7 +69,7 @@ struct Hit
 	float distance;
 	float3 hitPoint;
 	float3 normal;
-    float3 color;
+	float3 color;
 };
 struct Ray
 {
@@ -73,6 +77,14 @@ struct Ray
 	float3 direction;
 	float3 color;
 	float3 incomingLight;
+};
+struct ObjectBounds
+{
+	float3 boundsStart;
+	float3 boundsEnd;
+	
+	int indexStart;
+	int indexEnd;
 };
 
 // triangle struct and intersection algo
@@ -110,11 +122,84 @@ Hit iTriangle(Ray ray, Triangle tri)
 	hit.didhit = true;
 	hit.distance = t;
 	hit.hitPoint = ray.origin + ray.direction * t;
-    hit.color = tri.color;
+	hit.color = tri.color;
 	hit.normal = normalize(n);
 	return hit;
 }
 
+//  TODO: make this work, currently returns loop unrolling error crap 
+// credit to https://www.shadertoy.com/view/wttyR4 
+Hit baldwinRayTriIntersect(Ray ray, Triangle tri)
+{
+	float3 A = tri.v0;
+	float3 B = tri.v1;
+	float3 C = tri.v2;
+	
+	
+	float3 E1 = B - A;
+	float3 E2 = C - A;
+	
+	float3 n = cross(E1, E2);
+	
+	float3 normal = normalize(n);
+	
+	float3 an = abs(n);
+  
+	// Vectors for each row of the matrix
+	float4 tmat1, tmat2, tmat3;
+	float num = -dot(A, n);
+	
+	// Ideally, the matrix is only computed once and stored in memory
+	
+	// Compute world-to-baycentric transformation matrix
+	
+	float3 nn = step(an.yzx, an.xyz) * step(an.zxy, an.xyz);
+	int ni = int( dot(nn, float3(0,1,2)) );
+	
+	uint n1 = (ni + 1) % (uint) 3;
+	uint n2 = (ni + 2) % (uint) 3;
+	uint n3 = (1 - ni) % (uint) 3;
+	uint n4 = (2 - ni) % (uint) 3;
+	uint n5 = (3 - ni) % (uint) 3;
+	
+	tmat1 = float4(E2[n5], E2[n4], E2[n3],  C[n1] * A[n2] - C[n2] * A[n1]) / n[ni];
+	tmat2 = float4(E1[n5], E1[n4], E1[n3], -B[n1] * A[n2] + B[n2] * A[n1]) / n[ni];
+	tmat3 = float4(n.xyz, num) / n[ni];
+	
+	tmat1[ni] = 0.;
+	tmat2[ni] = 0.;
+	
+	tmat1[n2] *= -1.;
+	tmat2[n1] *= -1.;
+		
+	float s = dot(float4(ray.origin, 1), tmat3);
+	float d = dot(float4(ray.direction, 0), tmat3);
+	
+	// Distance
+	float t = -s / d;
+	
+	float4 pos = float4(ray.origin + ray.direction * t, 1);
+	
+	// UV
+	float u = dot(pos, tmat1);
+	float v = dot(pos, tmat2);
+	
+	if (u < 0. || v < 0. || (u + v) > 1.)
+	{
+		Hit hit;
+		hit.didhit = false;
+		hit.distance = -1;
+		return hit; // no intersection
+	}
+
+	Hit hit;
+	hit.didhit = true;
+	hit.distance = t;
+	hit.hitPoint = pos.xyz;
+	hit.color = tri.color;
+	hit.normal = normal;
+	return hit;
+}
 
 //create a ray given uv and camera parameters
 float3 viewParams;
@@ -134,10 +219,24 @@ Ray CameraRay(float2 uv)
 	return ray;
 }
 
+bool RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
+{
+	float3 invDir = 1 / ray.direction;
+	float3 tMin = (boxMin - ray.origin) * invDir;
+	float3 tMax = (boxMax - ray.origin) * invDir;
+	float3 t1 = min(tMin, tMax);
+	float3 t2 = max(tMin, tMax);
+	float tNear = max(max(t1.x, t1.y), t1.z);
+	float tFar = min(min(t2.x, t2.y), t2.z);
+	return tNear <= tFar;
+};
+
 //RWStructuredBuffer<int> debug;
 
 RWStructuredBuffer<Triangle> World;
+RWStructuredBuffer<ObjectBounds> WorldObjectBounds;
 int worldSize;
+int numObjects;
 
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
@@ -148,29 +247,49 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	
 	Ray ray = CameraRay(uv);
 	
-    float test = 0;
+	// keep track of current bound to check
+	int currentObjectBounds = 0;
+	
 	// iterate through world and find closest hit
 	Hit closestHit;
 	closestHit.didhit = false;
 	closestHit.distance = 10000000;
-    for (int i = 0; i < worldSize; i++)
-	{
+	for (int i = 0; i < worldSize; i++)
+	{	
+		// optimization: check with bounds and skip object if ray never hits
+		
+		ObjectBounds currentBounds = WorldObjectBounds[currentObjectBounds];
+		
+		if (i == currentBounds.indexStart) // only check on first iter
+			if (!RayBoundingBox(ray, currentBounds.boundsStart, currentBounds.boundsEnd))
+			{
+				i = currentBounds.indexEnd; // skip object if no hit
+				continue;
+			}
+				
+		// get tri and intersect with ray
 		Triangle tri = World[i];
 	
+		// optimization: check squared distances of points against squared closest distance
+		/*
+		if ((squaredDist(tri.v0, camPos) > closestHit.distance * closestHit.distance ||
+			squaredDist(tri.v1, camPos) > closestHit.distance * closestHit.distance ||
+			squaredDist(tri.v2, camPos) > closestHit.distance * closestHit.distance) && i != 0)
+			continue;
+		*/
+		
 		Hit hit = iTriangle(ray, tri);
 		
-        if (hit.distance < closestHit.distance && hit.didhit)
-        {
-            closestHit = hit;
-        }
-    }
+		if (hit.distance < closestHit.distance && hit.didhit) // closest hit + actually did hit
+			closestHit = hit;
+	}
 	
 	float3 col = lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
 	
 	if (closestHit.didhit)
 	{
-        col = float3(closestHit.normal.xyz);
-        //debug[0] = closestHit.distance;
+		col = float3(closestHit.normal.xyz);
+		//debug[0] = closestHit.distance;
 	}
 	
 	Output[id.xy] = float4(col, 1); 
