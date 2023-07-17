@@ -18,6 +18,18 @@ float rand()
 	result = (result >> 22) ^ result;
 	return result / 4294967295.;
 };
+float3 cosWeightedRandomHemisphereDirection(float3 n)
+{
+    float2 r = float2(rand(), rand());
+    float3 uu = normalize(cross(n, abs(n.y) > .5 ? float3(1., 0., 0.) : float3(0., 1., 0.)));
+    float3 vv = cross(uu, n);
+    float ra = sqrt(r.y);
+    float rx = ra * cos(6.28318530718 * r.x);
+    float ry = ra * sin(6.28318530718 * r.x);
+    float rz = sqrt(1. - r.y);
+    float3 rr = float3(rx * uu + ry * vv + rz * n);
+    return normalize(rr);
+}
 float3 normalize(float3 v)
 {
 	return v / length(v);
@@ -263,24 +275,20 @@ Hit worldIntersect(Ray ray)
 		
         ObjectBounds currentBounds = WorldObjectBounds[currentObjectBounds];
 		
-        if (i == currentBounds.indexStart) // only check on first iter
+        if (i == currentBounds.indexStart)
+        { // only check on first iter
             if (!RayBoundingBox(ray, currentBounds.boundsStart, currentBounds.boundsEnd))
             {
                 i = currentBounds.indexEnd; // skip object if no hit
+                currentObjectBounds++;
                 continue;
             }
+        }
+        else if (i == currentBounds.indexEnd)
+            currentObjectBounds++;
 		
-					// get tri and intersect with ray
-        Triangle tri = World[i];
-	
-			// optimization: check squared distances of points against squared closest distance
-		
-		/*
-		if ((squaredDist(tri.v0, camPos) > closestHit.distance * closestHit.distance &&
-			squaredDist(tri.v1, camPos) > closestHit.distance * closestHit.distance &&
-			squaredDist(tri.v2, camPos) > closestHit.distance * closestHit.distance) && i != 0)
-			continue;*/
-			
+		// get tri and intersect with ray
+		Triangle tri = World[i];			
 		
         Hit hit = iTriangle(ray, tri);
 		
@@ -317,7 +325,8 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             }
             ray.color *= closestHit.color;
             ray.origin = closestHit.hitPoint;
-            ray.direction = reflect(ray.direction, closestHit.normal);
+            ray.direction = cosWeightedRandomHemisphereDirection(closestHit.normal);
+            // ray.direction = reflect(ray.direction, closestHit.normal); // METAL
 			
 			//debug[0] = closestHit.distance;
 			

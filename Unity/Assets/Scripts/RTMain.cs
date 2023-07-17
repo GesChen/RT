@@ -178,8 +178,12 @@ public class RTMain : MonoBehaviour
 		debugBuffer.GetData(debugout);
 		Debug.Log("buffer " + debugout[0]);
 		*/
-		
-		worldBuffer.Dispose(); // release memory
-		boundsBuffer.Dispose();
+
+		// release memory
+		if (tris.Count > 0)
+		{
+			worldBuffer.Dispose();
+			boundsBuffer.Dispose();
+		}
 	}
 }

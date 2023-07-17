@@ -20,6 +20,13 @@ public class RTObject : MonoBehaviour
         Vector3 curPos    = transform.position;
         Quaternion curRot = transform.rotation;
         Vector3 curScl    = transform.localScale;
+
+        /* raycast method (needs improvement)
+        Transform cam = Camera.main.transform;
+        RaycastHit hit;
+        Physics.Raycast(cam.position, (transform.position - cam.position).normalized, out hit);
+        visibleToCamera = hit.transform == transform;
+        */
         Plane[] camFrustum = GeometryUtility.CalculateFrustumPlanes(Camera.main);
         visibleToCamera = GeometryUtility.TestPlanesAABB(camFrustum, GetComponent<Renderer>().bounds);
 
