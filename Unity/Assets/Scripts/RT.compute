@@ -238,6 +238,11 @@ float3 skyColor(Ray ray)
     return lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
 }
 
+void randomizeSeed()
+{
+    seed ^= (int) Time * 10000;
+}
+
 
 RWStructuredBuffer<Triangle> World;
 RWStructuredBuffer<ObjectBounds> WorldObjectBounds;
@@ -269,11 +274,12 @@ Hit worldIntersect(Ray ray)
         Triangle tri = World[i];
 	
 			// optimization: check squared distances of points against squared closest distance
-			
+		
+		/*
 		if ((squaredDist(tri.v0, camPos) > closestHit.distance * closestHit.distance &&
 			squaredDist(tri.v1, camPos) > closestHit.distance * closestHit.distance &&
 			squaredDist(tri.v2, camPos) > closestHit.distance * closestHit.distance) && i != 0)
-			continue;
+			continue;*/
 			
 		
         Hit hit = iTriangle(ray, tri);
@@ -286,7 +292,7 @@ Hit worldIntersect(Ray ray)
 
 //RWStructuredBuffer<int> debug;
 
-[numthreads(8,8,1)]
+[numthreads(16,16,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	seed = id.x + id.y * res.x;
@@ -294,28 +300,31 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     float3 accum = 0;
     for (int s = 0; s < samples; s++)
     {
-        int currentBounce = 0;
-        bool missed = false;
-        while (currentBounce < max_bounces && !missed)
-        {
-            seed ^= (int) Time * 10000;
-            float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
+        randomizeSeed();
+        float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
 	
-            Ray ray = CameraRay(uv);
+        Ray ray = CameraRay(uv);
 		
+        int currentBounce = 0;
+        while (currentBounce < max_bounces)
+        {
             Hit closestHit = worldIntersect(ray);
-	
-            float3 col = skyColor(ray);
-	
-            if (closestHit.didhit)
+		
+            if (!closestHit.didhit)
             {
-                col = float3(closestHit.normal.xyz);
-				//debug[0] = closestHit.distance;
+                ray.incomingLight = skyColor(ray);
+                break;
             }
-            accum += col;
+            ray.color *= closestHit.color;
+            ray.origin = closestHit.hitPoint;
+            ray.direction = reflect(ray.direction, closestHit.normal);
+			
+			//debug[0] = closestHit.distance;
+			
 			
             currentBounce++;
         }
+        accum += ray.color * ray.incomingLight;
     }
 	
 	Output[id.xy] = float4(accum / samples, 1); 

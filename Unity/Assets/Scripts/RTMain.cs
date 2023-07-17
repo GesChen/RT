@@ -110,7 +110,7 @@ public class RTMain : MonoBehaviour
 		BeforeDispatch();
 
 		// run shader
-		shader.Dispatch(0, texture.width / 8, texture.height / 8, 1);
+		shader.Dispatch(0, texture.width / 16, texture.height / 16, 1);
 
 		// clean up 
 		AfterDispatch();

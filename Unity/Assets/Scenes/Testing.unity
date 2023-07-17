@@ -154,7 +154,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2636c3756cc3d7246bfffab0d4968b9a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  color: {r: 0.16282035, g: 0.9245283, b: 0, a: 1}
+  color: {r: 0.15720895, g: 0.57877356, b: 0.9056604, a: 1}
   eColor: {r: 0, g: 0, b: 0, a: 0}
   eIntensity: 0
   visibleToCamera: 0
@@ -301,7 +301,7 @@ Transform:
   m_GameObject: {fileID: 584144277}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 2.6617, y: 2.6617, z: 2.6617}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -524,7 +524,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Samples: 1
-  MaxBounces: 1
+  MaxBounces: 10
   shader: {fileID: 7200000, guid: 6fa3ff01b9198514a8e8149910d98857, type: 3}
   texture: {fileID: 0}
 --- !u!114 &963194230
