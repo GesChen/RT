@@ -5,6 +5,8 @@
 // with cs.SetTexture
 RWTexture2D<float4> Output;
 float2 res; //resolution
+int samples;
+int max_bounces;
 
 float Time;
 uint seed = 1;
@@ -231,66 +233,90 @@ bool RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
 	return tNear <= tFar;
 };
 
-//RWStructuredBuffer<int> debug;
+float3 skyColor(Ray ray)
+{
+    return lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
+}
+
 
 RWStructuredBuffer<Triangle> World;
 RWStructuredBuffer<ObjectBounds> WorldObjectBounds;
 int worldSize;
 int numObjects;
 
+Hit worldIntersect(Ray ray)
+{
+    int currentObjectBounds = 0;
+
+    Hit closestHit;
+    closestHit.didhit = false;
+
+    closestHit.distance = 10000000;
+    for (int i = 0; i < worldSize; i++)
+    {
+		// optimization: check with bounds and skip object if ray never hits
+		
+        ObjectBounds currentBounds = WorldObjectBounds[currentObjectBounds];
+		
+        if (i == currentBounds.indexStart) // only check on first iter
+            if (!RayBoundingBox(ray, currentBounds.boundsStart, currentBounds.boundsEnd))
+            {
+                i = currentBounds.indexEnd; // skip object if no hit
+                continue;
+            }
+		
+					// get tri and intersect with ray
+        Triangle tri = World[i];
+	
+			// optimization: check squared distances of points against squared closest distance
+			
+		if ((squaredDist(tri.v0, camPos) > closestHit.distance * closestHit.distance &&
+			squaredDist(tri.v1, camPos) > closestHit.distance * closestHit.distance &&
+			squaredDist(tri.v2, camPos) > closestHit.distance * closestHit.distance) && i != 0)
+			continue;
+			
+		
+        Hit hit = iTriangle(ray, tri);
+		
+        if (hit.distance < closestHit.distance && hit.didhit) // closest hit + actually did hit
+            closestHit = hit;
+    }
+    return closestHit;
+};
+
+//RWStructuredBuffer<int> debug;
+
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	seed = id.x + id.y * res.x;
-	seed ^= (int) Time * 10000;
-	float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
 	
-	Ray ray = CameraRay(uv);
+    float3 accum = 0;
+    for (int s = 0; s < samples; s++)
+    {
+        int currentBounce = 0;
+        bool missed = false;
+        while (currentBounce < max_bounces && !missed)
+        {
+            seed ^= (int) Time * 10000;
+            float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
 	
-	// keep track of current bound to check
-	int currentObjectBounds = 0;
-	
-	// iterate through world and find closest hit
-	Hit closestHit;
-	closestHit.didhit = false;
-	closestHit.distance = 10000000;
-	for (int i = 0; i < worldSize; i++)
-	{	
-		// optimization: check with bounds and skip object if ray never hits
+            Ray ray = CameraRay(uv);
 		
-		ObjectBounds currentBounds = WorldObjectBounds[currentObjectBounds];
-		
-		if (i == currentBounds.indexStart) // only check on first iter
-			if (!RayBoundingBox(ray, currentBounds.boundsStart, currentBounds.boundsEnd))
-			{
-				i = currentBounds.indexEnd; // skip object if no hit
-				continue;
-			}
-				
-		// get tri and intersect with ray
-		Triangle tri = World[i];
+            Hit closestHit = worldIntersect(ray);
 	
-		// optimization: check squared distances of points against squared closest distance
-		/*
-		if ((squaredDist(tri.v0, camPos) > closestHit.distance * closestHit.distance ||
-			squaredDist(tri.v1, camPos) > closestHit.distance * closestHit.distance ||
-			squaredDist(tri.v2, camPos) > closestHit.distance * closestHit.distance) && i != 0)
-			continue;
-		*/
-		
-		Hit hit = iTriangle(ray, tri);
-		
-		if (hit.distance < closestHit.distance && hit.didhit) // closest hit + actually did hit
-			closestHit = hit;
-	}
+            float3 col = skyColor(ray);
 	
-	float3 col = lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
+            if (closestHit.didhit)
+            {
+                col = float3(closestHit.normal.xyz);
+				//debug[0] = closestHit.distance;
+            }
+            accum += col;
+			
+            currentBounce++;
+        }
+    }
 	
-	if (closestHit.didhit)
-	{
-		col = float3(closestHit.normal.xyz);
-		//debug[0] = closestHit.distance;
-	}
-	
-	Output[id.xy] = float4(col, 1); 
+	Output[id.xy] = float4(accum / samples, 1); 
 }

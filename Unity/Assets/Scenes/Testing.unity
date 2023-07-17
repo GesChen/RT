@@ -523,6 +523,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 546d0cdedea08824e98d9f485e069cca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  Samples: 1
+  MaxBounces: 1
   shader: {fileID: 7200000, guid: 6fa3ff01b9198514a8e8149910d98857, type: 3}
   texture: {fileID: 0}
 --- !u!114 &963194230

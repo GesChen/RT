@@ -26,6 +26,13 @@ public struct ObjectBounds
 
 public class RTMain : MonoBehaviour
 {
+	[Header("Settings")]
+	//[Range(0, 1000)]
+	public int Samples;
+	//[Range(0, 20)]
+	public int MaxBounces;
+
+	[Header("Backend")]
 	public ComputeShader shader;
 	public RenderTexture texture;
 	ComputeBuffer worldBuffer;
@@ -48,7 +55,16 @@ public class RTMain : MonoBehaviour
 
 		worldChanged = new UnityEvent();
 		worldChanged.AddListener(UpdateWorld);
-	}
+
+        if (texture == null)
+        {
+            texture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
+            {
+                enableRandomWrite = true
+            };
+            texture.Create();
+        }
+    }
 	void UpdateWorld()
 	{
 		// populate tris with all tris from meshes of rtobjects
@@ -69,7 +85,7 @@ public class RTMain : MonoBehaviour
 					boundsStart = rendererBounds.min,
 					boundsEnd = rendererBounds.max,
 					indexStart = i,
-					indexEnd = i + mesh.triangles.Length / 3
+					indexEnd = i + mesh.triangles.Length / 3 - 1
 				});
 
 				for (int t = 0; t < mesh.triangles.Length / 3; t++) //iterate through tris
@@ -90,14 +106,6 @@ public class RTMain : MonoBehaviour
 	}
 	private void OnRenderImage(RenderTexture src, RenderTexture dest)
 	{
-		//initialize
-		if (texture == null)
-		{
-			texture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24){
-				enableRandomWrite = true };
-			texture.Create();
-		}
-
 		// pass values into shader and other setup
 		BeforeDispatch();
 
@@ -146,6 +154,8 @@ public class RTMain : MonoBehaviour
 		// general
 		shader.SetTexture(0, "Output", texture);
 		shader.SetFloat("Time", Time.time);
+		shader.SetInt("samples", Samples);
+		shader.SetInt("max_bounces", MaxBounces);
 
 		// set camera values
 		float planeHeight = camera.nearClipPlane * Mathf.Tan(Mathf.Deg2Rad * camera.fieldOfView * .5f) * 2f;
