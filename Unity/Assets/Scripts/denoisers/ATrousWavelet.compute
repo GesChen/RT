@@ -1,0 +1,118 @@
+// Edge-Avoiding A-TrousWavelet Transform for denoising
+// implemented on https://www.shadertoy.com/view/ldKBzG
+
+
+#pragma kernel DenoiseMain
+
+float denoiseStrength;
+
+RWTexture2D<float4> Image;
+RWTexture2D<float4> Normals;
+int2 resolution;
+
+uint coordToIndex(int2 coord, int2 res)
+{
+	return coord.y * res.x + coord.x;
+}
+
+//RWTexture2D<float4> Output;
+
+[numthreads(16, 16, 1)]
+void DenoiseMain(uint3 id : SV_DispatchThreadID)
+{
+	float2 offset[25] =
+	{
+		float2(-2, -2),
+		float2(-1, -2),
+		float2(0, -2),
+		float2(1, -2),
+		float2(2, -2),
+	
+		float2(-2, -1),
+		float2(-1, -1),
+		float2(0, -1),
+		float2(1, -1),
+		float2(2, -1),
+	
+		float2(-2, 0),
+		float2(-1, 0),
+		float2(0, 0),
+		float2(1, 0),
+		float2(2, 0),
+	
+		float2(-2, 1),
+		float2(-1, 1),
+		float2(0, 1),
+		float2(1, 1),
+		float2(2, 1),
+	
+		float2(-2, 2),
+		float2(-1, 2),
+		float2(0, 2),
+		float2(1, 2),
+		float2(2, 2)
+	};
+	
+	
+	float kernel[25] =
+	{
+		1.0f / 256.0f,
+		1.0f / 64.0f,
+		3.0f / 128.0f,
+		1.0f / 64.0f,
+		1.0f / 256.0f,
+	
+		1.0f / 64.0f,
+		1.0f / 16.0f,
+		3.0f / 32.0f,
+		1.0f / 16.0f,
+		1.0f / 64.0f,
+	
+		3.0f / 128.0f,
+		3.0f / 32.0f,
+		9.0f / 64.0f,
+		3.0f / 32.0f,
+		3.0f / 128.0f,
+	
+		1.0f / 64.0f,
+		1.0f / 16.0f,
+		3.0f / 32.0f,
+		1.0f / 16.0f,
+		1.0f / 64.0f,
+	
+		1.0f / 256.0f,
+		1.0f / 64.0f,
+		3.0f / 128.0f,
+		1.0f / 64.0f,
+		1.0f / 256.0f
+	};
+	
+	float4 sum = 0.;
+	float c_phi = 1.0;
+	float n_phi = 0.5;
+		
+	float4 cval = Image[id.xy];
+	float4 nval = Normals[id.xy];
+	
+	float cum_w = 0.0;
+	for (int i = 0; i < 25; i++)
+	{
+		float2 uv = id.xy + offset[i] * denoiseStrength;
+		
+		float4 ctmp = Image[uv];
+		float4 t = cval - ctmp;
+		float dist2 = dot(t, t);
+		float c_w = min(exp(-(dist2) / c_phi), 1.0);
+		
+		float4 ntmp = Normals[uv];
+		t = nval - ntmp;
+		dist2 = max(dot(t, t), 0.0);
+		float n_w = min(exp(-(dist2) / n_phi), 1.0);
+		
+		float weight = c_w * n_w;
+		sum += ctmp * weight * kernel[i];
+		cum_w += weight * kernel[i];
+	}
+
+	Image[id.xy] = sum / cum_w;
+}

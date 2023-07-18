@@ -4,6 +4,7 @@
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
 RWTexture2D<float4> Output;
+RWTexture2D<float4> Normals;
 float2 res; //resolution
 int samples;
 int max_bounces;
@@ -252,7 +253,7 @@ float3 skyColor(Ray ray)
 
 void randomizeSeed()
 {
-    seed ^= (int) Time * 10000;
+    seed ^= int(Time * 10000);
 }
 
 
@@ -306,6 +307,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	seed = id.x + id.y * res.x;
 	
     float3 accum = 0;
+    float3 accumNormals = 0;
     for (int s = 0; s < samples; s++)
     {
         randomizeSeed();
@@ -330,11 +332,14 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 			
 			//debug[0] = closestHit.distance;
 			
-			
             currentBounce++;
+			
+			if(currentBounce = 0)
+                accumNormals += closestHit.normal;
         }
         accum += ray.color * ray.incomingLight;
     }
 	
 	Output[id.xy] = float4(accum / samples, 1); 
+    Normals[id.xy] = float4(accumNormals / samples, 1);
 }

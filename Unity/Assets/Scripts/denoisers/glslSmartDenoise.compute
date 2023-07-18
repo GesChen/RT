@@ -1,0 +1,61 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+#define SAMPLES 80  // HIGHER = NICER = SLOWER
+#define DISTRIBUTION_BIAS 0.6 // between 0. and 1.
+#define PIXEL_MULTIPLIER  1.5 // between 1. and 3. (keep low)
+#define INVERSE_HUE_TOLERANCE 20.0 // (2. - 30.)
+
+#define GOLDEN_ANGLE 2.3999632 //3PI-sqrt(5)PI
+
+#define pow(a,b) pow(max(a,0.),b) // @morimea
+
+float2x2 sample2D = float2x2(cos(GOLDEN_ANGLE), sin(GOLDEN_ANGLE), -sin(GOLDEN_ANGLE), cos(GOLDEN_ANGLE));
+
+RWTexture2D<float4> Image;
+int2 resolution;
+
+[numthreads(16, 16, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float2 uv = id.xy / resolution.xy;
+    
+    float3 denoisedColor = 0;
+    
+    const float sampleRadius = sqrt(float(SAMPLES));
+    const float sampleTrueRadius = 0.5 / (sampleRadius * sampleRadius);
+    float2 samplePixel = float2(1.0 / resolution.x, 1.0 / resolution.y);
+    float3 sampleCenter = Image[id.xy].rgb;
+    float3 sampleCenterNorm = normalize(sampleCenter);
+    float sampleCenterSat = length(sampleCenter);
+    
+    float influenceSum = 0.0;
+    float brightnessSum = 0.0;
+    
+    float2 pixelRotated = float2(0., 1.);
+    
+    for (float x = 0.0; x <= float(SAMPLES); x++)
+    {
+        
+        pixelRotated = mul(sample2D, pixelRotated);
+        
+        float2 pixelOffset = PIXEL_MULTIPLIER * pixelRotated * sqrt(x) * 0.5;
+        float pixelInfluence = 1.0 - sampleTrueRadius * pow(dot(pixelOffset,pixelOffset), DISTRIBUTION_BIAS);
+        pixelOffset *= samplePixel;
+            
+        float3 thisDenoisedColor = Image[id.xy + pixelOffset].rgb;
+
+        pixelInfluence *= pixelInfluence * pixelInfluence;
+        /*
+            HUE + SATURATION FILTER
+        */
+        pixelInfluence *=
+            pow(0.5+0.5*dot(sampleCenterNorm,normalize(thisDenoisedColor)), INVERSE_HUE_TOLERANCE)
+            * pow(1.0 - abs(length(thisDenoisedColor)-length(sampleCenterSat)), 8.);
+            
+        influenceSum += pixelInfluence;
+        denoisedColor += thisDenoisedColor * pixelInfluence;
+    }
+
+    Image[id.xy] = float4(denoisedColor / influenceSum, 1);
+}

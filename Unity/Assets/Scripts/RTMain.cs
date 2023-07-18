@@ -31,16 +31,22 @@ public class RTMain : MonoBehaviour
 	public int Samples;
 	//[Range(0, 20)]
 	public int MaxBounces;
+	public bool denoise = true;
+	public float denoiseStrength;
 
 	[Header("Backend")]
-	public ComputeShader shader;
+	public ComputeShader raytracer;
+	public ComputeShader denoiser;
+	public ComputeShader TAA;
 	public RenderTexture texture;
+	public RenderTexture normalsTexture;
+	private RenderTexture lastFrame;
 	ComputeBuffer worldBuffer;
 	ComputeBuffer boundsBuffer;
 	Camera camera;
 
 	public static UnityEvent worldChanged;
-	
+
 	List<Triangle> tris;
 	List<ObjectBounds> bounds;
 	Vector3 ColorToVec3(Color col)
@@ -56,13 +62,29 @@ public class RTMain : MonoBehaviour
 		worldChanged = new UnityEvent();
 		worldChanged.AddListener(UpdateWorld);
 
-        if (texture == null)
+		if (texture == null)
+		{
+			texture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
+			{
+				enableRandomWrite = true
+			};
+			texture.Create();
+		}
+        if (lastFrame == null)
         {
-            texture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
+            lastFrame = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
             {
                 enableRandomWrite = true
             };
-            texture.Create();
+            lastFrame.Create();
+        }
+        if (normalsTexture == null)
+        {
+            normalsTexture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
+            {
+                enableRandomWrite = true
+            };
+            normalsTexture.Create();
         }
     }
 	void UpdateWorld()
@@ -106,20 +128,24 @@ public class RTMain : MonoBehaviour
 	}
 	private void OnRenderImage(RenderTexture src, RenderTexture dest)
 	{
-		// pass values into shader and other setup
-		BeforeDispatch();
+		BeforeMain();
 
-		// run shader
-		shader.Dispatch(0, texture.width / 16, texture.height / 16, 1);
+		raytracer.Dispatch(0, texture.width / 16, texture.height / 16, 1);
 
-		// clean up 
-		AfterDispatch();
+		AfterMain();
+
+		if (denoise)
+		{
+			Denoise();
+			AntiAliasing();
+		}
 
 		// show texture to screen
-		Graphics.Blit(texture, dest); 
+		Graphics.Blit(texture, dest);
+		lastFrame = texture;
 	}
 
-	void BeforeDispatch()
+	void BeforeMain() // pass values into shader and other setup
 	{
 		/*
 		// debug
@@ -134,44 +160,43 @@ public class RTMain : MonoBehaviour
 			int worldSize = sizeof(float) * 3 * 4; // 3 for vec3, 4 for 4 vec3s 
 			worldBuffer = new(tris.Count, worldSize);
 			worldBuffer.SetData(tris.ToArray());
-			shader.SetBuffer(0, "World", worldBuffer);
-			shader.SetInt("worldSize", tris.Count);
+			raytracer.SetBuffer(0, "World", worldBuffer);
+			raytracer.SetInt("worldSize", tris.Count);
 
 			int boundsSize = sizeof(float) * 3 * 2 + sizeof(int) * 2;
 			boundsBuffer = new(bounds.Count, boundsSize);
 			boundsBuffer.SetData(bounds.ToArray());
-			shader.SetBuffer(0, "WorldObjectBounds", boundsBuffer);
-			shader.SetInt("numObjects", bounds.Count);
+			raytracer.SetBuffer(0, "WorldObjectBounds", boundsBuffer);
+			raytracer.SetInt("numObjects", bounds.Count);
 		}
 		else
 		{
-			shader.SetInt("worldSize", 0);
-			shader.SetInt("numObjects", 0);
+			raytracer.SetInt("worldSize", 0);
+			raytracer.SetInt("numObjects", 0);
 		}
 
-
-
 		// general
-		shader.SetTexture(0, "Output", texture);
-		shader.SetFloat("Time", Time.time);
-		shader.SetInt("samples", Samples);
-		shader.SetInt("max_bounces", MaxBounces);
+		raytracer.SetTexture(0, "Output", texture);
+		raytracer.SetTexture(0, "Normals", normalsTexture);
+		raytracer.SetFloat("Time", Time.time);
+		raytracer.SetInt("samples", Samples);
+		raytracer.SetInt("max_bounces", MaxBounces);
 
 		// set camera values
 		float planeHeight = camera.nearClipPlane * Mathf.Tan(Mathf.Deg2Rad * camera.fieldOfView * .5f) * 2f;
 		float planeWidth = planeHeight * camera.aspect;
 		float[] viewParams = new float[3] { planeWidth, planeHeight, camera.nearClipPlane };
-		shader.SetFloats("viewParams", viewParams); // view parameters 
+		raytracer.SetFloats("viewParams", viewParams); // view parameters 
 
 		Vector3 ctp = camera.transform.position;
-		shader.SetFloats("camPos", new float[3] { ctp.x, ctp.y, ctp.z }); // set position
+		raytracer.SetFloats("camPos", new float[3] { ctp.x, ctp.y, ctp.z }); // set position
 
 		Vector3 ctre = camera.transform.rotation.eulerAngles;
-		shader.SetFloats("camRot", new float[3] { ctre.x, ctre.y, ctre.z }); // set rotation
+		raytracer.SetFloats("camRot", new float[3] { ctre.x, ctre.y, ctre.z }); // set rotation
 
-		shader.SetFloats("res", new float[2] { texture.width, texture.height });
+		raytracer.SetFloats("res", new float[2] { texture.width, texture.height });
 	}
-	void AfterDispatch()
+	void AfterMain()
 	{
 		/* debug pt2
 		int[] debugout = new int[1];
@@ -186,4 +211,21 @@ public class RTMain : MonoBehaviour
 			boundsBuffer.Dispose();
 		}
 	}
+	void Denoise()
+	{
+		denoiser.SetFloat("denoiseStrength", denoiseStrength);
+        denoiser.SetInts("resolution", new int[2] { texture.width, texture.height });
+		denoiser.SetTexture(0, "Image", texture);
+		denoiser.SetTexture(0, "Normals", normalsTexture);
+
+		denoiser.Dispatch(0, texture.width / 16, texture.height / 16, 1);
+    }
+	void AntiAliasing()
+	{
+        TAA.SetInts("resolution", new int[2] { texture.width, texture.height });
+        TAA.SetTexture(0, "Image", texture);
+		TAA.SetTexture(0, "LastFrame", lastFrame);
+
+        TAA.Dispatch(0, texture.width / 16, texture.height / 16, 1);
+    }
 }
