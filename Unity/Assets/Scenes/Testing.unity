@@ -156,8 +156,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 0.15720895, g: 0.57877356, b: 0.9056604, a: 1}
-  eColor: {r: 0, g: 0, b: 0, a: 0}
-  eIntensity: 0
+  smoothness: 0
+  emission: 0
   visibleToCamera: 0
 --- !u!23 &285275096
 MeshRenderer:
@@ -344,8 +344,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 1, g: 0.60754716, b: 0.60754716, a: 0}
-  eColor: {r: 0, g: 0, b: 0, a: 0}
-  eIntensity: 0
+  smoothness: 0
+  emission: 0
   visibleToCamera: 0
 --- !u!64 &584144283
 MeshCollider:
@@ -496,8 +496,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 1, g: 0.60754716, b: 0.60754716, a: 0}
-  eColor: {r: 0, g: 0, b: 0, a: 0}
-  eIntensity: 0
+  smoothness: 0
+  emission: 308.42
   visibleToCamera: 0
 --- !u!23 &913945981
 MeshRenderer:
@@ -696,6 +696,7 @@ MonoBehaviour:
   MaxBounces: 10
   denoise: 0
   denoiseStrength: 2
+  doEnvironment: 1
   HDRI: {fileID: 2800000, guid: b78836192741f89499d4043a3c4f64f8, type: 3}
   raytracer: {fileID: 7200000, guid: 6fa3ff01b9198514a8e8149910d98857, type: 3}
   denoiser: {fileID: 7200000, guid: 253644e286fab4c4eae131e84e4e5bc7, type: 3}
@@ -776,8 +777,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 0.5739332, g: 0.1568627, b: 0.90588236, a: 1}
-  eColor: {r: 0, g: 0, b: 0, a: 0}
-  eIntensity: 0
+  smoothness: 0
+  emission: 0
   visibleToCamera: 0
 --- !u!23 &1055466028
 MeshRenderer:
@@ -942,8 +943,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 0.9623507, g: 1, b: 0, a: 0}
-  eColor: {r: 0, g: 0, b: 0, a: 0}
-  eIntensity: 0
+  smoothness: 1
+  emission: 0
   visibleToCamera: 0
 --- !u!64 &1339808052
 MeshCollider:
@@ -999,8 +1000,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 1, g: 0, b: 0, a: 0}
-  eColor: {r: 0, g: 0, b: 0, a: 0}
-  eIntensity: 0
+  smoothness: 0
+  emission: 0
   visibleToCamera: 0
 --- !u!23 &1755283979
 MeshRenderer:

@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -12,8 +11,8 @@ public struct Triangle
 	public Vector3 v2;
 
 	public Vector3 color;
-	//public Vector3 eColor;
-	//public float eIntensity;
+	public float smoothness;
+	public float emission;
 }
 public struct ObjectBounds
 {
@@ -120,9 +119,9 @@ public class RTMain : MonoBehaviour
 						v0 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 0]]),
 						v1 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 1]]),
 						v2 = obj.transform.TransformPoint(mesh.vertices[mesh.triangles[t * 3 + 2]]),
-						color = ColorToVec3(obj.color)//,
-													  //eColor = col2vec3(obj.eColor),
-													  //eIntensity = obj.eIntensity,
+						color = ColorToVec3(obj.color),
+						smoothness = obj.smoothness,
+						emission = obj.emission
 					});
 				}
 			}
@@ -159,7 +158,7 @@ public class RTMain : MonoBehaviour
 		// world and bounds buffer
 		if (tris.Count > 0)
 		{
-			int worldSize = sizeof(float) * 3 * 4; // 3 for vec3, 4 for 4 vec3s 
+			int worldSize = sizeof(float) * 3 * 4 + sizeof(float) * 2; // 3 for vec3, 4 for 4 vec3s + 2 floats
 			worldBuffer = new(tris.Count, worldSize);
 			worldBuffer.SetData(tris.ToArray());
 			raytracer.SetBuffer(0, "World", worldBuffer);

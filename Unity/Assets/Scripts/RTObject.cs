@@ -6,8 +6,9 @@ public class RTObject : MonoBehaviour
 {
     [Header("Material")]
     public Color color;
-    public Color eColor;
-    public float eIntensity;
+    [Range(0, 1)]
+    public float smoothness;
+    public float emission;
     [Space]
     public bool visibleToCamera;
 
