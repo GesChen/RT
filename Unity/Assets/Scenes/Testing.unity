@@ -692,10 +692,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 546d0cdedea08824e98d9f485e069cca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Samples: 5
+  Samples: 3
   MaxBounces: 10
-  denoise: 1
-  denoiseStrength: 1
+  denoise: 0
+  denoiseStrength: 2
+  HDRI: {fileID: 2800000, guid: b78836192741f89499d4043a3c4f64f8, type: 3}
   raytracer: {fileID: 7200000, guid: 6fa3ff01b9198514a8e8149910d98857, type: 3}
   denoiser: {fileID: 7200000, guid: 253644e286fab4c4eae131e84e4e5bc7, type: 3}
   TAA: {fileID: 7200000, guid: 479560def9cd5ba4ab9a91c4951ba5b9, type: 3}

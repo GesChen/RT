@@ -10,11 +10,6 @@ RWTexture2D<float4> Image;
 RWTexture2D<float4> Normals;
 int2 resolution;
 
-uint coordToIndex(int2 coord, int2 res)
-{
-	return coord.y * res.x + coord.x;
-}
-
 //RWTexture2D<float4> Output;
 
 [numthreads(16, 16, 1)]

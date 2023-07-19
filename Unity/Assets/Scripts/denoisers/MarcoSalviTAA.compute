@@ -1,0 +1,60 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+int2 offsets[8] = { 
+    int2(-1,-1), int2(-1, 1), 
+	int2(1, -1), int2(1, 1), 
+	int2(1, 0), int2(0, -1), 
+	int2(0, 1), int2(-1, 0)};
+
+float3 RGBToYCoCg(float3 RGB)
+{
+    float Y = dot(RGB, float3(1, 2, 1)) * 0.25;
+    float Co = dot(RGB, float3(2, 0, -2)) * 0.25 + (0.5 * 256.0 / 255.0);
+    float Cg = dot(RGB, float3(-1, 2, -1)) * 0.25 + (0.5 * 256.0 / 255.0);
+    return float3(Y, Co, Cg);
+}
+
+float3 YCoCgToRGB(float3 YCoCg)
+{
+    float Y = YCoCg.x;
+    float Co = YCoCg.y - (0.5 * 256.0 / 255.0);
+    float Cg = YCoCg.z - (0.5 * 256.0 / 255.0);
+    float R = Y + Co - Cg;
+    float G = Y + Cg;
+    float B = Y - Co - Cg;
+    return float3(R, G, B);
+}
+
+RWTexture2D<float4> Image;
+RWTexture2D<float4> LastFrame;
+int2 resolution;
+
+[numthreads(16, 16, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float2 q = id.xy / resolution.xy;
+    float3 newImage = RGBToYCoCg(Image[q].xyz);
+    float3 history = RGBToYCoCg(LastFrame[q].xyz);
+    
+    float3 colorAvg = newImage;
+    float3 colorVar = newImage * newImage;
+    
+    // Marco Salvi's Implementation (by Chris Wyman)
+    for (int i = 0; i < 8; i++)
+    {
+        float3 fetch = RGBToYCoCg(Image[id.xy + offsets[i]].xyz);
+        colorAvg += fetch;
+        colorVar += fetch * fetch;
+    }
+    colorAvg /= 9.0;
+    colorVar /= 9.0;
+    float gColorBoxSigma = 0.75;
+    float3 sigma = sqrt(max(0., colorVar - colorAvg * colorAvg));
+    float3 colorMin = colorAvg - gColorBoxSigma * sigma;
+    float3 colorMax = colorAvg + gColorBoxSigma * sigma;
+    
+    LastFrame[id.xy] = float4(clamp(history, colorMin, colorMax), 1);
+    
+    Image[id.xy] = float4(YCoCgToRGB(lerp(newImage, history, 0.95)), 1.0);
+}

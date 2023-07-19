@@ -11,6 +11,9 @@ int max_bounces;
 
 float Time;
 uint seed = 1;
+bool doEnvironment;
+
+//float PI = 3.14159265359;
 
 float rand()
 {
@@ -21,20 +24,24 @@ float rand()
 };
 float3 cosWeightedRandomHemisphereDirection(float3 n)
 {
-    float2 r = float2(rand(), rand());
-    float3 uu = normalize(cross(n, abs(n.y) > .5 ? float3(1., 0., 0.) : float3(0., 1., 0.)));
-    float3 vv = cross(uu, n);
-    float ra = sqrt(r.y);
-    float rx = ra * cos(6.28318530718 * r.x);
-    float ry = ra * sin(6.28318530718 * r.x);
-    float rz = sqrt(1. - r.y);
-    float3 rr = float3(rx * uu + ry * vv + rz * n);
-    return normalize(rr);
+	float2 r = float2(rand(), rand());
+	float3 uu = normalize(cross(n, abs(n.y) > .5 ? float3(1., 0., 0.) : float3(0., 1., 0.)));
+	float3 vv = cross(uu, n);
+	float ra = sqrt(r.y);
+	float rx = ra * cos(6.28318530718 * r.x);
+	float ry = ra * sin(6.28318530718 * r.x);
+	float rz = sqrt(1. - r.y);
+	float3 rr = float3(rx * uu + ry * vv + rz * n);
+	return normalize(rr);
 }
 float3 normalize(float3 v)
 {
 	return v / length(v);
 };
+float2 normalize(float2 v)
+{
+	return v / length(v);
+}
 float3 rotateX(float3 v, float t)
 {
 	float3x3 mat = float3x3(
@@ -70,6 +77,11 @@ float3 rotateVector(float3 vec, float3 eulerAngles)
 float squaredDist(float3 a, float3 b)
 {
 	return dot(a - b, a - b);
+}
+float asinh(float x)
+{
+	return log(x + sqrt(x * x + 1));
+
 }
 
 struct Material
@@ -203,7 +215,7 @@ Hit baldwinRayTriIntersect(Ray ray, Triangle tri)
 	{
 		Hit hit;
 		hit.didhit = false;
-		hit.distance = -1;
+		//hit.distance = -1;
 		return hit; // no intersection
 	}
 
@@ -246,14 +258,26 @@ bool RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
 	return tNear <= tFar;
 };
 
+Texture2D<float4> hdri;
+int2 hdriSize;
 float3 skyColor(Ray ray)
-{
-    return lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
+{	
+	// basic gradient 
+	// return lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
+	
+	float PI = 3.14159265359;
+	
+	float3 dir = ray.direction;
+	float x = atan2(dir.x, dir.z) / PI;
+	float y = sin(dir.y * PI / 2.);
+	float2 uv = (float2(x, y) + 1.)/2.;
+	
+	return hdri[uv * hdriSize].xyz;
 }
 
 void randomizeSeed()
 {
-    seed ^= int(Time * 10000);
+	seed ^= int(Time * 10000);
 }
 
 
@@ -264,39 +288,39 @@ int numObjects;
 
 Hit worldIntersect(Ray ray)
 {
-    int currentObjectBounds = 0;
+	int currentObjectBounds = 0;
 
-    Hit closestHit;
-    closestHit.didhit = false;
+	Hit closestHit;
+	closestHit.didhit = false;
 
-    closestHit.distance = 10000000;
-    for (int i = 0; i < worldSize; i++)
-    {
+	closestHit.distance = 10000000;
+	for (int i = 0; i < worldSize; i++)
+	{
 		// optimization: check with bounds and skip object if ray never hits
 		
-        ObjectBounds currentBounds = WorldObjectBounds[currentObjectBounds];
+		ObjectBounds currentBounds = WorldObjectBounds[currentObjectBounds];
 		
-        if (i == currentBounds.indexStart)
-        { // only check on first iter
-            if (!RayBoundingBox(ray, currentBounds.boundsStart, currentBounds.boundsEnd))
-            {
-                i = currentBounds.indexEnd; // skip object if no hit
-                currentObjectBounds++;
-                continue;
-            }
-        }
-        else if (i == currentBounds.indexEnd)
-            currentObjectBounds++;
+		if (i == currentBounds.indexStart)
+		{ // only check on first iter
+			if (!RayBoundingBox(ray, currentBounds.boundsStart, currentBounds.boundsEnd))
+			{
+				i = currentBounds.indexEnd; // skip object if no hit
+				currentObjectBounds++;
+				continue;
+			}
+		}
+		else if (i == currentBounds.indexEnd)
+			currentObjectBounds++;
 		
 		// get tri and intersect with ray
 		Triangle tri = World[i];			
 		
-        Hit hit = iTriangle(ray, tri);
+		Hit hit = iTriangle(ray, tri);
 		
-        if (hit.distance < closestHit.distance && hit.didhit) // closest hit + actually did hit
-            closestHit = hit;
-    }
-    return closestHit;
+		if (hit.distance < closestHit.distance && hit.didhit) // closest hit + actually did hit
+			closestHit = hit;
+	}
+	return closestHit;
 };
 
 //RWStructuredBuffer<int> debug;
@@ -306,40 +330,41 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	seed = id.x + id.y * res.x;
 	
-    float3 accum = 0;
-    float3 accumNormals = 0;
-    for (int s = 0; s < samples; s++)
-    {
-        randomizeSeed();
-        float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
+	float3 accum = 0;
+	float3 accumNormals = 0;
+	for (int s = 0; s < samples; s++)
+	{
+		randomizeSeed();
+		float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
 	
-        Ray ray = CameraRay(uv);
+		Ray ray = CameraRay(uv);
 		
-        int currentBounce = 0;
-        while (currentBounce < max_bounces)
-        {
-            Hit closestHit = worldIntersect(ray);
+		int currentBounce = 0;
+		while (currentBounce < max_bounces)
+		{
+			Hit closestHit = worldIntersect(ray);
 		
-            if (!closestHit.didhit)
-            {
-                ray.incomingLight = skyColor(ray);
-                break;
-            }
-            ray.color *= closestHit.color;
-            ray.origin = closestHit.hitPoint;
-            ray.direction = cosWeightedRandomHemisphereDirection(closestHit.normal);
-            // ray.direction = reflect(ray.direction, closestHit.normal); // METAL
+			if (!closestHit.didhit)
+			{
+				if(doEnvironment)
+					ray.incomingLight = skyColor(ray);
+				break;
+			}
+			ray.color *= closestHit.color;
+			ray.origin = closestHit.hitPoint;
+			ray.direction = cosWeightedRandomHemisphereDirection(closestHit.normal);
+			// ray.direction = reflect(ray.direction, closestHit.normal); // METAL
 			
 			//debug[0] = closestHit.distance;
 			
-            currentBounce++;
+			if (currentBounce == 0)
+				accumNormals += closestHit.normal.xyz;
 			
-			if(currentBounce = 0)
-                accumNormals += closestHit.normal;
-        }
-        accum += ray.color * ray.incomingLight;
-    }
+			currentBounce++;
+		}
+		accum += ray.color * ray.incomingLight;
+	}
 	
 	Output[id.xy] = float4(accum / samples, 1); 
-    Normals[id.xy] = float4(accumNormals / samples, 1);
+	Normals[id.xy] = float4(accumNormals / samples, 1);
 }

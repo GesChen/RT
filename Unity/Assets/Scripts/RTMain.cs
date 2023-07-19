@@ -33,6 +33,8 @@ public class RTMain : MonoBehaviour
 	public int MaxBounces;
 	public bool denoise = true;
 	public float denoiseStrength;
+	public bool doEnvironment;
+	public Texture HDRI;
 
 	[Header("Backend")]
 	public ComputeShader raytracer;
@@ -70,23 +72,23 @@ public class RTMain : MonoBehaviour
 			};
 			texture.Create();
 		}
-        if (lastFrame == null)
-        {
-            lastFrame = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
-            {
-                enableRandomWrite = true
-            };
-            lastFrame.Create();
-        }
-        if (normalsTexture == null)
-        {
-            normalsTexture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
-            {
-                enableRandomWrite = true
-            };
-            normalsTexture.Create();
-        }
-    }
+		if (lastFrame == null)
+		{
+			lastFrame = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
+			{
+				enableRandomWrite = true
+			};
+			lastFrame.Create();
+		}
+		if (normalsTexture == null)
+		{
+			normalsTexture = new RenderTexture(camera.pixelWidth, camera.pixelHeight, 24)
+			{
+				enableRandomWrite = true
+			};
+			normalsTexture.Create();
+		}
+	}
 	void UpdateWorld()
 	{
 		// populate tris with all tris from meshes of rtobjects
@@ -137,8 +139,8 @@ public class RTMain : MonoBehaviour
 		if (denoise)
 		{
 			Denoise();
-			AntiAliasing();
 		}
+		AntiAliasing();
 
 		// show texture to screen
 		Graphics.Blit(texture, dest);
@@ -181,6 +183,9 @@ public class RTMain : MonoBehaviour
 		raytracer.SetFloat("Time", Time.time);
 		raytracer.SetInt("samples", Samples);
 		raytracer.SetInt("max_bounces", MaxBounces);
+		raytracer.SetTexture(0, "hdri", HDRI);
+		raytracer.SetInts("hdriSize", new int[2] {HDRI.width, HDRI.height});
+		raytracer.SetBool("doEnvironment", doEnvironment);
 
 		// set camera values
 		float planeHeight = camera.nearClipPlane * Mathf.Tan(Mathf.Deg2Rad * camera.fieldOfView * .5f) * 2f;
@@ -214,18 +219,18 @@ public class RTMain : MonoBehaviour
 	void Denoise()
 	{
 		denoiser.SetFloat("denoiseStrength", denoiseStrength);
-        denoiser.SetInts("resolution", new int[2] { texture.width, texture.height });
+		denoiser.SetInts("resolution", new int[2] { texture.width, texture.height });
 		denoiser.SetTexture(0, "Image", texture);
 		denoiser.SetTexture(0, "Normals", normalsTexture);
 
 		denoiser.Dispatch(0, texture.width / 16, texture.height / 16, 1);
-    }
+	}
 	void AntiAliasing()
 	{
-        TAA.SetInts("resolution", new int[2] { texture.width, texture.height });
-        TAA.SetTexture(0, "Image", texture);
+		TAA.SetInts("resolution", new int[2] { texture.width, texture.height });
+		TAA.SetTexture(0, "Image", texture);
 		TAA.SetTexture(0, "LastFrame", lastFrame);
 
-        TAA.Dispatch(0, texture.width / 16, texture.height / 16, 1);
-    }
+		TAA.Dispatch(0, texture.width / 16, texture.height / 16, 1);
+	}
 }
