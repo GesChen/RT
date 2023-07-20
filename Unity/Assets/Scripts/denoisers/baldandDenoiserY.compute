@@ -1,0 +1,66 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Image;
+int2 resolution;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float4 c = Image[id.xy];
+    float4 acc = c;
+    float count = 1.0;
+    float ra = c.a;
+    int size = resolution.y / 8;
+    for (int yoff = -1; yoff > (-size - 1); yoff--)
+    {
+        // Weight far away source pixels less
+        float weight = 1.0 - abs(float(yoff)) / float(size);
+        
+		// Reflect at edge        
+        int2 ycrd = id.xy + int2(0, yoff);
+        //if (ycrd.y<0) ycrd = ifloat2(crd.x, yoff-crd.y);
+        
+        float4 oth = Image[ycrd];
+        float ddist = abs(oth.a - ra);
+        if (ddist < 0.5)
+        {
+            acc.rgb += oth.rgb * weight;
+            count += weight;
+            ra = oth.a;
+        }
+    }
+    ra = c.a;
+    for (int yoff_pass2 = 1; yoff_pass2 < (size + 1); yoff_pass2++)
+    {
+        // Weight far away source pixels less
+        float weight = 1.0 - abs(float(yoff_pass2)) / float(size);
+        
+		// Reflect at edge        
+        int2 ycrd = id.xy + int2(0, yoff_pass2);
+        //if (ycrd.y>=resolution.y) ycrd = ifloat2(crd.x, resolution.y-ycrd.y);
+        
+        float4 oth = Image[ycrd];
+        float ddist = abs(oth.a - ra);
+        if (ddist < 0.5)
+        {
+            acc.rgb += oth.rgb * weight;
+            count += weight;
+            ra = oth.a;
+        }
+    }
+    
+    // Is this an edge that needs some anti-aliasing?
+    if (count <= 1.0)
+    {
+        acc.rgb += 0.25 * Image[id.xy + int2(0, -2)].rgb;
+        acc.rgb += 0.5  * Image[id.xy + int2(0, -1)].rgb;
+        acc.rgb += 0.5  * Image[id.xy + int2(0,  1)].rgb;
+        acc.rgb += 0.25 * Image[id.xy + int2(0,  2)].rgb;
+        count += 1.5;
+    }
+    
+    Image[id.xy] = acc * (1.0 / count);
+}

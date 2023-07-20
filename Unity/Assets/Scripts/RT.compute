@@ -372,6 +372,8 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 			
             ray.color *= lerp(mat.color, 0., isSpecularBounce);
 			ray.incomingLight += ray.color * mat.color * mat.emission;
+			if(mat.emission > 0)
+                break;
 			
 			
 			//debug[0] = closestHit.distance;

@@ -34,6 +34,7 @@ public class RTMain : MonoBehaviour
 	public float denoiseStrength;
 	public bool doEnvironment = false;
 	public Texture HDRI;
+	public bool onlyRenderFrustum = true;
 
 	[Header("Backend")]
 	public ComputeShader raytracer;
@@ -97,7 +98,7 @@ public class RTMain : MonoBehaviour
 		foreach (RTObject obj in FindObjectsOfType<RTObject>())
 		{
 			// dont render if object isn't in frustum
-			if (obj.visibleToCamera)
+			if (obj.visibleToCamera || !onlyRenderFrustum)
 			{
 				Mesh mesh = obj.GetComponent<MeshFilter>().sharedMesh;
 
