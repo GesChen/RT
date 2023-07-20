@@ -27,20 +27,20 @@ public class RTMain : MonoBehaviour
 {
 	[Header("Settings")]
 	//[Range(0, 1000)]
-	public int Samples;
+	public int Samples = 5;
 	//[Range(0, 20)]
-	public int MaxBounces;
+	public int MaxBounces = 5;
 	public bool denoise = true;
 	public float denoiseStrength;
-	public bool doEnvironment;
+	public bool doEnvironment = false;
 	public Texture HDRI;
 
 	[Header("Backend")]
 	public ComputeShader raytracer;
 	public ComputeShader denoiser;
 	public ComputeShader TAA;
-	public RenderTexture texture;
-	public RenderTexture normalsTexture;
+	private RenderTexture texture;
+    private RenderTexture normalsTexture;
 	private RenderTexture lastFrame;
 	ComputeBuffer worldBuffer;
 	ComputeBuffer boundsBuffer;

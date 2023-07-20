@@ -156,8 +156,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   color: {r: 0.15720895, g: 0.57877356, b: 0.9056604, a: 1}
-  smoothness: 0
-  emission: 0
+  smoothness: 1
+  emission: 17.47
   visibleToCamera: 0
 --- !u!23 &285275096
 MeshRenderer:
@@ -497,7 +497,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   color: {r: 1, g: 0.60754716, b: 0.60754716, a: 0}
   smoothness: 0
-  emission: 308.42
+  emission: 0
   visibleToCamera: 0
 --- !u!23 &913945981
 MeshRenderer:
