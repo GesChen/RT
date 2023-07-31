@@ -4,16 +4,10 @@
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
 RWTexture2D<float4> Output;
-RWTexture2D<float4> Normals;
 float2 res; //resolution
-int samples;
-int max_bounces;
 
 float Time;
 uint seed = 1;
-bool doEnvironment;
-
-//float PI = 3.14159265359;
 
 float rand()
 {
@@ -54,8 +48,8 @@ float3 rotateX(float3 v, float t)
 float3 rotateY(float3 v, float t)
 {
 	float3x3 mat = float3x3(
-	cos(t),  0, sin(t),
-		 0,  1,      0,
+	cos(t), 0, sin(t),
+		 0, 1, 0,
 	-sin(t), 0, cos(t));
 	
 	return mul(v, mat);
@@ -78,10 +72,58 @@ float squaredDist(float3 a, float3 b)
 {
 	return dot(a - b, a - b);
 }
-float asinh(float x)
+float sqrMag(float3 v)
 {
-	return log(x + sqrt(x * x + 1));
+	return dot(v, v);
+}
+float3 closestPointOnTri(float3 p, float3 a, float3 b, float3 c)
+{
+	const float3 ab = b - a;
+	const float3 ac = c - a;
+	const float3 ap = p - a;
 
+	const float d1 = dot(ab, ap);
+	const float d2 = dot(ac, ap);
+	if (d1 <= 0 && d2 <= 0)
+		return a;
+
+	const float3 bp = p - b;
+	const float d3 = dot(ab, bp);
+	const float d4 = dot(ac, bp);
+	if (d3 >= 0 && d4 <= d3)
+		return b;
+
+	const float3 cp = p - c;
+	const float d5 = dot(ab, cp);
+	const float d6 = dot(ac, cp);
+	if (d6 >= 0 && d5 <= d6)
+		return c;
+
+	const float vc = d1 * d4 - d3 * d2;
+	if (vc <= 0 && d1 >= 0 && d3 <= 0)
+	{
+		const float v = d1 / (d1 - d3);
+		return a + v * ab;
+	}
+	
+	const float vb = d5 * d2 - d1 * d6;
+	if (vb <= 0 && d2 >= 0 && d6 <= 0)
+	{
+		const float v = d2 / (d2 - d6);
+		return a + v * ac;
+	}
+	
+	const float va = d3 * d6 - d5 * d4;
+	if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0)
+	{
+		const float v = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+		return b + v * (c - b);
+	}
+
+	const float denom = 1.f / (va + vb + vc);
+	const float v = vb * denom;
+	const float w = vc * denom;
+	return a + v * ab + w * ac;
 }
 
 struct Material
@@ -132,17 +174,18 @@ Hit iTriangle(Ray ray, Triangle tri)
 	float3 v2v0 = tri.v2 - tri.v0;
 	float3 rov0 = ray.origin - tri.v0;
 
-	float3 n = cross( v1v0, v2v0 );
-	float3 q = cross( rov0, ray.direction );
-	float  d = 1.0 / dot( ray.direction, n );
-	float  u = d * dot( -q, v2v0 );
-	float  v = d * dot( q,  v1v0 );
-	float  t = d * dot( -n, rov0 );
+	float3 n = cross(v1v0, v2v0);
+	float3 q = cross(rov0, ray.direction);
+	float d = 1.0 / dot(ray.direction, n);
+	float u = d * dot(-q, v2v0);
+	float v = d * dot(q, v1v0);
+	float t = d * dot(-n, rov0);
 
 	if (u < 0. || v < 0. || (u + v) > 1. || t < .01 || t > 1000) // .01 and 1000 used as near and far temporarily, fixes the rendering behind camera bug
 	{
 		Hit hit;
 		hit.didhit = false;
+		hit.distance = -1;
 		return hit; // no intersection
 	}
 	
@@ -154,61 +197,10 @@ Hit iTriangle(Ray ray, Triangle tri)
 	Hit hit;
 	hit.didhit = true;
 	hit.distance = t;
-	hit.hitPoint = ray.origin + ray.direction * t;	
+	hit.hitPoint = ray.origin + ray.direction * t;
 	hit.material = mat;
 	hit.normal = normalize(n);
 	return hit;
-}
-
-
-Hit altTri(Ray ray, Triangle tri)
-{
-    float3 ab = tri.v1 - tri.v0;
-    float3 ac = tri.v2 - tri.v0;
-	
-    float3 n = cross(ray.direction, ac);
-	
-    float det = dot(ab, n);
-	
-    if (det <= 1e-7)
-    {
-        Hit hit;
-        hit.didhit = false;
-        return hit; // no intersection
-    }
-	
-    float3 ao = ray.origin - ab;
-    float u = dot(ao, n) / det;
-    if (u < 0 || u > 1)
-    {
-        Hit hit;
-        hit.didhit = false;
-        return hit; // no intersection
-    }
-	
-    float3 e = cross(ao, ab);
-    float v = dot(ray.direction, e) / det;
-    if (v < 0 || u + v > 1)
-    {
-        Hit hit;
-        hit.didhit = false;
-        return hit; // no intersection
-    }
-	
-    float t = dot(ac, e) / det;
-	
-    Material mat;
-    mat.color = tri.color;
-    mat.smoothness = tri.smoothness;
-    mat.emission = tri.emission;
-	
-    Hit hit;
-    hit.didhit = true;
-    hit.distance = t/2;
-    hit.hitPoint = ray.origin + ray.direction * t;
-    hit.material = mat;
-    hit.normal = normalize(n);
-    return hit;
 }
 
 //  TODO: make this work, currently returns loop unrolling error crap 
@@ -237,7 +229,7 @@ Hit baldwinRayTriIntersect(Ray ray, Triangle tri)
 	// Compute world-to-baycentric transformation matrix
 	
 	float3 nn = step(an.yzx, an.xyz) * step(an.zxy, an.xyz);
-	int ni = int( dot(nn, float3(0,1,2)) );
+	int ni = int(dot(nn, float3(0, 1, 2)));
 	
 	uint n1 = (ni + 1) % uint(3);
 	uint n2 = (ni + 2) % uint(3);
@@ -245,7 +237,7 @@ Hit baldwinRayTriIntersect(Ray ray, Triangle tri)
 	uint n4 = (2 - ni) % uint(3);
 	uint n5 = (3 - ni) % uint(3);
 	
-	tmat1 = float4(E2[n5], E2[n4], E2[n3],  C[n1] * A[n2] - C[n2] * A[n1]) / n[ni];
+	tmat1 = float4(E2[n5], E2[n4], E2[n3], C[n1] * A[n2] - C[n2] * A[n1]) / n[ni];
 	tmat2 = float4(E1[n5], E1[n4], E1[n3], -B[n1] * A[n2] + B[n2] * A[n1]) / n[ni];
 	tmat3 = float4(n.xyz, num) / n[ni];
 	
@@ -319,23 +311,6 @@ bool RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
 	return tNear <= tFar;
 };
 
-Texture2D<float4> hdri;
-int2 hdriSize;
-float3 skyColor(Ray ray)
-{	
-	// basic gradient 
-	// return lerp(float3(1, 1, 1), float3(.5, .7, 1), smoothstep(0, 1, .5 * (ray.direction.y + 1)));
-	
-	float PI = 3.14159265359;
-	
-	float3 dir = ray.direction;
-	float x = atan2(dir.x, dir.z) / PI;
-	float y = sin(dir.y * PI / 2.);
-	float2 uv = (float2(x, y) + 1.)/2.;
-	
-	return hdri[uv * hdriSize].xyz;
-}
-
 void randomizeSeed()
 {
 	seed ^= int(Time * 10000);
@@ -373,7 +348,7 @@ Hit worldIntersect(Ray ray)
 			currentObjectBounds++;
 		
 		// get tri and intersect with ray
-		Triangle tri = World[i];			
+		Triangle tri = World[i];
 		
 		Hit hit = iTriangle(ray, tri);
 		
@@ -385,59 +360,45 @@ Hit worldIntersect(Ray ray)
 
 //RWStructuredBuffer<int> debug;
 
-[numthreads(16,16,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+[numthreads(16, 16, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
 {
 	seed = id.x + id.y * res.x;
 	
-	float3 accum = 0;
-	float3 accumNormals = 0;
-	for (int s = 0; s < samples; s++)
-	{
-		randomizeSeed();
-		float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
+	randomizeSeed();
+	float2 uv = (id.xy + float2(rand(), rand())) / res.xy;
 	
-		Ray ray = CameraRay(uv);
+	Ray ray = CameraRay(uv);
 		
+	Hit closestHit = worldIntersect(ray);
+	
+	if (closestHit.didhit)
+	{
+		bool isSpecularBounce = rand() >= .5;
 		
+		Material mat = closestHit.material;
 		
-		int currentBounce = 0;
-		while (currentBounce < max_bounces)
-		{
-			Hit closestHit = worldIntersect(ray);
-		
-			if (!closestHit.didhit)
-			{
-				if(doEnvironment)
-					ray.incomingLight += skyColor(ray);
-				break;
-			}
-			ray.origin = closestHit.hitPoint;
-			
-			float3 diffuseDir = cosWeightedRandomHemisphereDirection(closestHit.normal);
-			float3 specularDir = reflect(ray.direction, closestHit.normal);
-			bool isSpecularBounce = rand() >= .5;
-			
-			Material mat = closestHit.material;
-			ray.direction = lerp(diffuseDir, specularDir, mat.smoothness * isSpecularBounce);
-			//ray.direction = specularDir;
-			
-            ray.color *= lerp(mat.color, 0., isSpecularBounce);
-			ray.incomingLight += ray.color * mat.color * mat.emission;
-			if(mat.emission > 0)
-                break;
-			
-			
-			//debug[0] = closestHit.distance;
-			
-			if (currentBounce == 0)
-				accumNormals += closestHit.normal.xyz;
-			
-			currentBounce++;
-		}
-		accum += ray.color * ray.incomingLight;
+		ray.color = mat.color;
+		ray.incomingLight += ray.color * mat.color * mat.emission;
 	}
 	
-    Output[id.xy] = (Output[id.xy] + float4(accum / samples, 1)) / 2;
-	Normals[id.xy] = float4(accumNormals / samples, 1);
+	// get closest emission tri
+	float2 closest = float2(-1, 100000); //x = id, y = squaredDist
+	for (int o = 0; o < worldSize; o++)
+	{
+		Triangle tri = World[o];
+		if (tri.emission > 0)
+		{
+			float dist = squaredDist((tri.v0 + tri.v1 + tri.v2) / 3, closestHit.hitPoint);
+			if (dist < closest.y)
+				closest = float2(o, dist);
+		}
+	}
+	Triangle tri = World[closest.x];
+	float d = squaredDist(closestHit.hitPoint, closestPointOnTri(closestHit.hitPoint, tri.v0, tri.v1, tri.v2));
+	ray.color *= sqrt(closest.y);
+	
+	Output[id.xy] = float4(ray.color * ray.incomingLight, 1);
+	float v = tri.emission - d;
+	Output[id.xy] = float4(v,v,v, 1);
 }

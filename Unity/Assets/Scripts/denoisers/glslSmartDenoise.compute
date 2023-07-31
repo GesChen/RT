@@ -1,61 +1,56 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 
-#define SAMPLES 80  // HIGHER = NICER = SLOWER
-#define DISTRIBUTION_BIAS 0.6 // between 0. and 1.
-#define PIXEL_MULTIPLIER  1.5 // between 1. and 3. (keep low)
-#define INVERSE_HUE_TOLERANCE 20.0 // (2. - 30.)
-
-#define GOLDEN_ANGLE 2.3999632 //3PI-sqrt(5)PI
-
-#define pow(a,b) pow(max(a,0.),b) // @morimea
-
-float2x2 sample2D = float2x2(cos(GOLDEN_ANGLE), sin(GOLDEN_ANGLE), -sin(GOLDEN_ANGLE), cos(GOLDEN_ANGLE));
-
 RWTexture2D<float4> Image;
 int2 resolution;
 
-[numthreads(16, 16, 1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+float4 tex(float2 uv)
 {
-    float2 uv = id.xy / resolution.xy;
-    
-    float3 denoisedColor = 0;
-    
-    const float sampleRadius = sqrt(float(SAMPLES));
-    const float sampleTrueRadius = 0.5 / (sampleRadius * sampleRadius);
-    float2 samplePixel = float2(1.0 / resolution.x, 1.0 / resolution.y);
-    float3 sampleCenter = Image[id.xy].rgb;
-    float3 sampleCenterNorm = normalize(sampleCenter);
-    float sampleCenterSat = length(sampleCenter);
-    
-    float influenceSum = 0.0;
-    float brightnessSum = 0.0;
-    
-    float2 pixelRotated = float2(0., 1.);
-    
-    for (float x = 0.0; x <= float(SAMPLES); x++)
-    {
-        
-        pixelRotated = mul(sample2D, pixelRotated);
-        
-        float2 pixelOffset = PIXEL_MULTIPLIER * pixelRotated * sqrt(x) * 0.5;
-        float pixelInfluence = 1.0 - sampleTrueRadius * pow(dot(pixelOffset,pixelOffset), DISTRIBUTION_BIAS);
-        pixelOffset *= samplePixel;
-            
-        float3 thisDenoisedColor = Image[id.xy + pixelOffset].rgb;
+	return Image[uv * resolution];
+}
 
-        pixelInfluence *= pixelInfluence * pixelInfluence;
-        /*
-            HUE + SATURATION FILTER
-        */
-        pixelInfluence *=
-            pow(0.5+0.5*dot(sampleCenterNorm,normalize(thisDenoisedColor)), INVERSE_HUE_TOLERANCE)
-            * pow(1.0 - abs(length(thisDenoisedColor)-length(sampleCenterSat)), 8.);
-            
-        influenceSum += pixelInfluence;
-        denoisedColor += thisDenoisedColor * pixelInfluence;
-    }
+float4 smartDeNoise(float2 uv, float sigma, float kSigma, float threshold)
+{
+	float INV_SQRT_OF_2PI = 0.39894228040143267793994605993439; // 1.0/SQRT_OF_2PI
+	float INV_PI = 0.31830988618379067153776752674503;
+	
+	float radius = round(kSigma * sigma);
+	float radQ = radius * radius;
+	
+	float invSigmaQx2 = .5 / (sigma * sigma); // 1.0 / (sigma^2 * 2.0)
+	float invSigmaQx2PI = INV_PI * invSigmaQx2; // 1.0 / (sqrt(PI) * sigma)
+	
+	float invThresholdSqx2 = .5 / (threshold * threshold); // 1.0 / (sigma^2 * 2.0)
+	float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold; // 1.0 / (sqrt(2*PI) * sigma)
+	
+	float4 centrPx = tex(uv);
+	
+	float zBuff = 0.;
+	float4 aBuff = 0.;
+	
+	for (float x = -radius; x <= radius; x++)
+	{
+		float pt = sqrt(radQ - x * x); // pt = yRadius: have circular trend
+		for (float y = -pt; y <= pt; y++)
+		{
+			float2 d = float2(x, y);
 
-    Image[id.xy] = float4(denoisedColor / influenceSum, 1);
+			float blurFactor = exp(-dot(d, d) * invSigmaQx2) * invSigmaQx2PI;
+			
+			float4 walkPx = tex(uv + d / resolution);
+
+			float4 dC = walkPx - centrPx;
+			float deltaFactor = exp(-dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+								 
+			zBuff += deltaFactor;
+			aBuff += deltaFactor * walkPx;
+		}
+	}
+	return aBuff / zBuff;
+}
+
+[numthreads(16, 16, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    Image[id.xy] = smartDeNoise(float2(id.xy) / resolution.xy, 5, 2, .1);
 }
